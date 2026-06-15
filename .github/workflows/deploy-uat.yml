@@ -1,0 +1,44 @@
+name: Deploy — UAT
+
+# Triggered when a pull request from dev → uat is merged.
+# UAT is the final testing gate before production. It gets a purple banner
+# and is deployed to /uat/ so stakeholders can review before PROD sign-off.
+
+on:
+  push:
+    branches: [uat]
+  workflow_dispatch:   # allow manual trigger for re-deployments
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-uat:
+    name: Build & Deploy to UAT
+    runs-on: ubuntu-latest
+
+    # Environment block ties this job to GitHub's "UAT" environment,
+    # where you can add required reviewers or protection rules later.
+    environment:
+      name: UAT
+      url: https://bobiknaj1229.github.io/wc2026-simulator/uat/
+
+    steps:
+      - name: Checkout uat branch
+        uses: actions/checkout@v4
+        with:
+          ref: uat
+
+      # Inject UAT banner — purple ribbon, clearly labeled for stakeholders
+      - name: Inject UAT environment banner
+        run: |
+          sed -i 's|<!-- ENV_BANNER_PLACEHOLDER -->|<div class="env-banner uat">🧪 UAT ENVIRONMENT — for testing and stakeholder review only</div>|g' index.html
+
+      - name: Deploy to GitHub Pages (UAT sub-path)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          destination_dir: uat
+          keep_files: true    # preserve /dev/ and root (PROD) contents
+          commit_message: "ci: deploy UAT from ${{ github.sha }}"

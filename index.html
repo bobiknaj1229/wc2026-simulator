@@ -205,9 +205,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .standings-page-grid{grid-template-columns:1fr}
   .bracket{min-width:800px}
 }
+.env-banner{display:flex;align-items:center;justify-content:center;gap:10px;padding:7px 16px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.env-banner.dev{background:#ff6b00;color:#fff}
+.env-banner.uat{background:#6b21a8;color:#fff}
 </style>
 </head>
 <body>
+
+<!-- ENV_BANNER_PLACEHOLDER -->
 
 <div class="header">
   <div class="header-brand">
@@ -341,6 +346,61 @@ const FIFA_RANK={
   'Qatar':55,'Iraq':57,'South Africa':60,'Saudi Arabia':61,'Jordan':63,
   'Bosnia & Herzegovina':65,'Cape Verde':69,'Ghana':74,'Curaçao':82,
   'Haiti':83,'New Zealand':85
+};
+
+/* ── SIMULATION ENGINE v2: REALISTIC MODEL ── */
+
+// FIFA points as of mid-2025 cycle (non-linear — gaps between elites are larger than gaps between mid-table)
+const FIFA_POINTS={
+  'France':1851,'Spain':1841,'Argentina':1886,'England':1806,
+  'Portugal':1764,'Brazil':1783,'Netherlands':1740,'Morocco':1735,
+  'Belgium':1742,'Germany':1739,'Croatia':1683,'Colombia':1690,
+  'Senegal':1621,'Mexico':1639,'USA':1650,'Uruguay':1676,
+  'Japan':1631,'Switzerland':1628,'Iran':1590,'Türkiye':1589,
+  'Ecuador':1579,'Austria':1577,'South Korea':1563,'Australia':1546,
+  'Algeria':1530,'Egypt':1527,'Canada':1524,'Norway':1519,
+  'Panama':1503,'Ivory Coast':1498,'Sweden':1467,'Paraguay':1455,
+  'Czechia':1452,'Scotland':1443,'Tunisia':1438,'DR Congo':1420,
+  'Uzbekistan':1395,'Qatar':1360,'Iraq':1342,'South Africa':1325,
+  'Saudi Arabia':1318,'Jordan':1308,'Bosnia & Herzegovina':1300,
+  'Cape Verde':1279,'Ghana':1249,'Curaçao':1198,
+  'Haiti':1195,'New Zealand':1185
+};
+
+// Which confederation each team belongs to
+const CONFEDERATION={
+  'Mexico':'CONCACAF','USA':'CONCACAF','Canada':'CONCACAF',
+  'Panama':'CONCACAF','Haiti':'CONCACAF','Curaçao':'CONCACAF',
+  'Brazil':'CONMEBOL','Argentina':'CONMEBOL','Colombia':'CONMEBOL',
+  'Uruguay':'CONMEBOL','Ecuador':'CONMEBOL','Paraguay':'CONMEBOL',
+  'France':'UEFA','Spain':'UEFA','England':'UEFA','Germany':'UEFA',
+  'Portugal':'UEFA','Netherlands':'UEFA','Belgium':'UEFA','Croatia':'UEFA',
+  'Switzerland':'UEFA','Türkiye':'UEFA','Austria':'UEFA','Norway':'UEFA',
+  'Sweden':'UEFA','Czechia':'UEFA','Scotland':'UEFA',
+  'Bosnia & Herzegovina':'UEFA',
+  'Morocco':'CAF','Senegal':'CAF','Ivory Coast':'CAF','Egypt':'CAF',
+  'Algeria':'CAF','Tunisia':'CAF','DR Congo':'CAF','South Africa':'CAF',
+  'Ghana':'CAF','Cape Verde':'CAF',
+  'Japan':'AFC','South Korea':'AFC','Iran':'AFC','Australia':'AFC',
+  'Saudi Arabia':'AFC','Iraq':'AFC','Jordan':'AFC','Uzbekistan':'AFC',
+  'Qatar':'AFC',
+  'New Zealand':'OFC'
+};
+
+// Confederation strength multiplier — a CAF #20 is not equal to a UEFA #20
+const CONF_MULTIPLIER={'UEFA':1.00,'CONMEBOL':0.98,'CONCACAF':0.87,'CAF':0.84,'AFC':0.82,'OFC':0.75};
+
+// Host nation boost: USA, Canada, Mexico get crowd/familiarity advantage (~12% xG lift)
+const HOST_NATIONS=new Set(['USA','Canada','Mexico']);
+
+// Historical WC penalty shootout skill (relative conversion rate 0–1)
+const PENALTY_SKILL={
+  'Germany':0.80,'Argentina':0.78,'Spain':0.70,'Brazil':0.67,
+  'Portugal':0.65,'Netherlands':0.63,'Uruguay':0.62,'Croatia':0.62,
+  'Switzerland':0.62,'Belgium':0.60,'France':0.60,'Japan':0.60,
+  'Colombia':0.58,'England':0.58,'Norway':0.56,'Sweden':0.56,
+  'Mexico':0.55,'USA':0.55,'Ecuador':0.52,'Morocco':0.57,
+  'Senegal':0.55,'Austria':0.55,'South Korea':0.54,'Czechia':0.55
 };
 
 /* ── FULL SQUAD DATA ── */
@@ -604,18 +664,65 @@ let state={
 
 function getFlag(t){return FLAGS[t]||'🏳️'}
 function getRank(t){return FIFA_RANK[t]||99}
-function getStrength(t){return Math.max(0.05,1.1-(getRank(t)/100))}
+/* ─── STRENGTH: FIFA points (non-linear) × confederation × squad form ─── */
+function getStrength(t){
+  const pts=FIFA_POINTS[t]||1200;
+  // Normalize 1100–1900 pts range to 0.28–1.00; non-linear gap preserved
+  const base=0.28+0.72*Math.max(0,(pts-1100)/800);
+  const conf=CONF_MULTIPLIER[CONFEDERATION[t]]||0.84;
+  const form=getSquadFormFactor(t);
+  return base*conf*form;
+}
+
+// Derive a form multiplier (0.88–1.12) from the average player form rating in the squad data
+function getSquadFormFactor(t){
+  const sq=getSquad(t);
+  const avg=sq.reduce((s,p)=>s+p.form,0)/sq.length;
+  // Squad form ratings span roughly 6.5–9.4; map that to 0.88–1.12
+  return 0.88+((avg-6.5)/2.9)*0.24;
+}
+
+/* ─── POISSON GOAL MODEL (industry-standard for football simulation) ─── *
+ *  Goals per team follow Poisson(λ). λ is derived from the attacking     *
+ *  team's strength relative to the defending team's strength.             *
+ *  Mean WC goals per team per match ≈ 1.35 (historical average).         */
+function poissonRandom(lambda){
+  // Knuth algorithm: exact Poisson sampling
+  const L=Math.exp(-lambda);
+  let k=0,p=1;
+  do{k++;p*=Math.random();}while(p>L);
+  return k-1;
+}
+
+function getExpectedGoals(attacker,defender){
+  const BASE=1.35; // WC historical mean goals/team/match
+  const attStr=getStrength(attacker);
+  const defStr=getStrength(defender);
+  // Attacker advantage scaled by relative strength; defence quality depresses it
+  let xg=BASE*(attStr/Math.max(defStr,0.1))*0.9;
+  if(HOST_NATIONS.has(attacker))xg*=1.12; // host nation crowd & familiarity boost
+  return Math.max(0.25,Math.min(xg,4.0)); // clamp: at least a slim chance; avoid absurd blowouts
+}
 
 function simScore(t1,t2){
-  const s1=getStrength(t1),s2=getStrength(t2),tot=s1+s2;
-  const p1=s1/tot*0.55+0.05,pd=0.22,r=Math.random();
-  let g1,g2;
-  if(r<p1){g1=Math.floor(Math.random()*3)+1;g2=Math.floor(Math.random()*Math.min(g1,2));}
-  else if(r<p1+pd){g1=Math.floor(Math.random()*3);g2=g1;}
-  else{g2=Math.floor(Math.random()*3)+1;g1=Math.floor(Math.random()*Math.min(g2,2));}
+  const g1=poissonRandom(getExpectedGoals(t1,t2));
+  const g2=poissonRandom(getExpectedGoals(t2,t1));
   return{g1,g2};
 }
-function simPenalties(){return Math.random()>.5?{p1:5,p2:4}:{p1:3,p2:5};}
+
+/* ─── PENALTY SHOOTOUT: historical team skill, not a coin flip ─── */
+function simPenalties(t1,t2){
+  const sk1=PENALTY_SKILL[t1]||0.58,sk2=PENALTY_SKILL[t2]||0.58;
+  // Normalise so the better team has a real edge, not just 50/50
+  const prob1=sk1/(sk1+sk2);
+  if(Math.random()<prob1){
+    const base=3+Math.floor(Math.random()*3);
+    return{p1:base+1,p2:base};
+  } else {
+    const base=3+Math.floor(Math.random()*3);
+    return{p1:base,p2:base+1};
+  }
+}
 
 function initGroupMatches(){
   state.groupMatches=[];state.matchIdCounter=0;
@@ -652,7 +759,7 @@ function playMatch(m){
   else{
     if(sc.g1>sc.g2)m.winner=m.t1;
     else if(sc.g1<sc.g2)m.winner=m.t2;
-    else{const p=simPenalties();m.penaltyResult=p;m.winner=p.p1>p.p2?m.t1:m.t2;}
+    else{const p=simPenalties(m.t1,m.t2);m.penaltyResult=p;m.winner=p.p1>p.p2?m.t1:m.t2;}
   }
 }
 function getGroupRanking(g){

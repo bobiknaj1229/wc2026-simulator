@@ -1,0 +1,45 @@
+name: Deploy — PROD
+
+# Triggered when a pull request from uat → main is merged.
+# PROD requires a manual approval gate (configured in GitHub → Environments → Production).
+# No banner is injected — PROD shows the clean, production version of the app.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allow emergency manual re-deploys
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-prod:
+    name: Build & Deploy to PROD
+    runs-on: ubuntu-latest
+
+    # "Production" environment must be created in GitHub → Settings → Environments.
+    # Add yourself (bobiknaj1229) as a Required Reviewer there — the workflow will
+    # pause and send you an approval request before deploying to the live site.
+    environment:
+      name: Production
+      url: https://bobiknaj1229.github.io/wc2026-simulator/
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      # No banner injection for PROD — the placeholder comment is simply removed
+      - name: Remove ENV banner placeholder (clean PROD build)
+        run: |
+          sed -i 's|<!-- ENV_BANNER_PLACEHOLDER -->||g' index.html
+
+      # Deploy to root of gh-pages — this IS the live production site
+      - name: Deploy to GitHub Pages (PROD root)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          keep_files: true    # preserve /dev/ and /uat/ sub-directories
+          commit_message: "ci: deploy PROD from ${{ github.sha }}"

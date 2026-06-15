@@ -1,0 +1,44 @@
+name: Deploy — DEV
+
+# Triggered on every push to the dev branch.
+# Purpose: give developers an always-fresh preview of what's on dev,
+# deployed to the /dev/ sub-path of the GitHub Pages site.
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:   # allow manual trigger from the GitHub UI
+
+permissions:
+  contents: write      # needed to push to gh-pages branch
+
+jobs:
+  deploy-dev:
+    name: Build & Deploy to DEV
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1 — Check out the dev branch code
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      # Step 2 — Inject the DEV environment banner.
+      # The placeholder comment in index.html is replaced with a visible
+      # orange ribbon so testers always know which environment they're on.
+      - name: Inject DEV environment banner
+        run: |
+          sed -i 's|<!-- ENV_BANNER_PLACEHOLDER -->|<div class="env-banner dev">⚠️ DEV ENVIRONMENT — not for production use</div>|g' index.html
+
+      # Step 3 — Deploy to the /dev/ sub-directory of the gh-pages branch.
+      # peaceiris/actions-gh-pages handles the git push to gh-pages for us,
+      # writing only into the destination_dir so other env folders are untouched.
+      - name: Deploy to GitHub Pages (DEV sub-path)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          destination_dir: dev
+          keep_files: true    # preserve /uat/ and root (PROD) contents
+          commit_message: "ci: deploy DEV from ${{ github.sha }}"
