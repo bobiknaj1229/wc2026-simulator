@@ -209,13 +209,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .env-banner.dev{background:#ff6b00;color:#fff}
 .env-banner.uat{background:#6b21a8;color:#fff}
 
-/* ── MATCH EVENTS (scorers + bookings) ── */
+/* ── MATCH DATE CHIP ── */
 .match-date{font-size:11px;color:var(--text3);background:var(--bg3);padding:2px 8px;border-radius:10px;white-space:nowrap}
-.match-events{margin-top:9px;padding-top:9px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.match-events-col{display:flex;flex-direction:column;gap:3px;min-width:0}
-.match-events-col.right{align-items:flex-end;text-align:right}
-.scorer{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.booking{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
+/* ── VIEW TOGGLE CTA ── */
+.view-toggle-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.view-toggle-label{font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap}
+.view-toggle-btns{display:flex;gap:4px;background:var(--bg3);padding:3px;border-radius:var(--radius-sm);border:1px solid var(--border)}
+.view-toggle-btn{padding:7px 16px;border-radius:4px;border:none;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;transition:all .15s;white-space:nowrap}
+.view-toggle-btn.active{background:var(--navy);color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.view-toggle-btn:not(.active):hover{background:var(--border);color:var(--text)}
+.actual-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;background:#dcfce7;color:#166534;margin-left:4px}
+.sim-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;background:#dbeafe;color:#1e40af;margin-left:4px}
+
+/* ── GROUP SECTION HEADERS in DASHBOARD ── */
+.group-section{margin-bottom:12px}
+.group-section-header{display:flex;align-items:center;gap:10px;padding:8px 12px;background:linear-gradient(90deg,var(--navy),#004a99);border-radius:var(--radius-sm);margin-bottom:6px}
+.group-section-title{font-size:13px;font-weight:700;color:var(--gold-light);letter-spacing:.3px}
+.group-section-meta{font-size:11px;color:rgba(255,255,255,.5);margin-left:auto}
 
 /* ── DASHBOARD STAGE SECTIONS ── */
 .dashboard-stage{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px;box-shadow:var(--shadow)}
@@ -250,7 +261,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <nav class="nav">
     <button class="nav-btn active" onclick="showPage('dashboard')"><i class="ti ti-layout-dashboard"></i> Dashboard</button>
-    <button class="nav-btn" onclick="showPage('groups')"><i class="ti ti-layout-grid"></i> Groups</button>
     <button class="nav-btn" onclick="showPage('standings')"><i class="ti ti-table"></i> Standings</button>
     <button class="nav-btn" onclick="showPage('matches')"><i class="ti ti-calendar-event"></i> Matches</button>
     <button class="nav-btn" onclick="showPage('bracket')"><i class="ti ti-tournament"></i> Bracket</button>
@@ -280,7 +290,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="status-item"><span class="status-dot dot-gray"></span> Phase: <strong id="stat-round">Group Stage</strong></div>
       <div class="status-item"><i class="ti ti-flag"></i> Teams: <strong id="stat-teams">48</strong></div>
     </div>
-    <h3 class="section-title"><i class="ti ti-clock"></i> Recent & Upcoming Matches</h3>
+    <div class="view-toggle-bar">
+      <span class="view-toggle-label"><i class="ti ti-eye"></i> Results View:</span>
+      <div class="view-toggle-btns">
+        <button class="view-toggle-btn active" id="btn-actual" onclick="setViewMode('actual')"><i class="ti ti-world"></i> Actual Results</button>
+        <button class="view-toggle-btn" id="btn-simulated" onclick="setViewMode('simulated')"><i class="ti ti-cpu"></i> Simulated Results</button>
+      </div>
+    </div>
     <div id="recent-matches" class="matches-list"></div>
   </div>
 
@@ -445,6 +461,25 @@ const KNOCKOUT_DATES={
   'Semi-finals':   ['2026-07-14','2026-07-15'],
   'Final':         ['2026-07-19'],
 };
+
+/* ── ACTUAL WC 2026 RESULTS (populated as matches are played) ── */
+// Key: both team names sorted alphabetically joined by '|'
+// Value: {t1, t2, g1 (score for t1), g2 (score for t2)}
+const ACTUAL_RESULTS = {
+  'Mexico|South Africa':  {t1:'Mexico',   t2:'South Africa', g1:1, g2:0},
+  'Brazil|Morocco':       {t1:'Brazil',   t2:'Morocco',      g1:1, g2:1},
+  'Haiti|Scotland':       {t1:'Scotland', t2:'Haiti',        g1:1, g2:0},
+  'Paraguay|USA':         {t1:'USA',      t2:'Paraguay',     g1:1, g2:0},
+  'Sweden|Tunisia':       {t1:'Sweden',   t2:'Tunisia',      g1:5, g2:0},
+};
+function getActualResult(t1,t2){
+  const key=[t1,t2].sort().join('|');
+  const r=ACTUAL_RESULTS[key];
+  if(!r)return null;
+  // Normalise so caller always gets scores relative to the t1/t2 they passed in
+  if(r.t1===t1)return{g1:r.g1,g2:r.g2};
+  return{g1:r.g2,g2:r.g1};
+}
 
 /* ── FULL SQUAD DATA ── */
 const SQUADS = {
@@ -702,7 +737,8 @@ let state={
   groups:JSON.parse(JSON.stringify(GROUPS_DATA)),
   groupMatches:[],knockoutMatches:[],groupStandings:{},
   advancedTeams:[],currentRound:'group',currentKnockoutRound:0,
-  champion:null,matchIdCounter:0,groupView:'teams',activeMatchRound:'Group Stage'
+  champion:null,matchIdCounter:0,groupView:'teams',activeMatchRound:'Group Stage',
+  viewMode:'actual'
 };
 
 function getFlag(t){return FLAGS[t]||'🏳️'}
@@ -1001,12 +1037,19 @@ function renderDashboard(){
     if(!s.matches.length){
       bodyHtml=`<div class="stage-empty"><i class="ti ti-lock"></i> Complete previous rounds to unlock</div>`;
     } else if(s.key==='group'){
-      // Show last 4 played + next 3 upcoming for group stage
-      const played=s.matches.filter(m=>m.played).slice(-4);
-      const upcoming=s.matches.filter(m=>!m.played).slice(0,3);
-      const shown=[...played,...upcoming];
-      bodyHtml=shown.map(m=>renderMatchCard(m,true)).join('');
-      if(s.matches.filter(m=>!m.played).length>3)bodyHtml+=`<div style="text-align:center;font-size:12px;color:var(--text3);padding:6px 0">${s.matches.filter(m=>!m.played).length-3} more upcoming — go to <strong>Matches</strong> tab to see all</div>`;
+      // Group Stage: render matches grouped under each Group letter header
+      ['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(g=>{
+        const gMs=s.matches.filter(m=>m.group===g);
+        if(!gMs.length)return;
+        const gPlayed=gMs.filter(m=>m.played).length;
+        bodyHtml+=`<div class="group-section">
+          <div class="group-section-header">
+            <span class="group-section-title"><i class="ti ti-layout-grid"></i> Group ${g}</span>
+            <span class="group-section-meta">${gPlayed}/6 played</span>
+          </div>
+          ${gMs.map(m=>renderMatchCard(m,true)).join('')}
+        </div>`;
+      });
     } else {
       bodyHtml=s.matches.map(m=>renderMatchCard(m,true)).join('');
     }
@@ -1030,31 +1073,44 @@ function toggleStage(key){
   body.classList.toggle('hidden');
   chev.classList.toggle('open');
 }
+function setViewMode(mode){
+  state.viewMode=mode;
+  document.getElementById('btn-actual').classList.toggle('active',mode==='actual');
+  document.getElementById('btn-simulated').classList.toggle('active',mode==='simulated');
+  renderDashboard();
+}
 
 function renderMatchCard(m,showBtn=false){
   const dateTag=m.date?`<span class="match-date">${formatDate(m.date)}</span>`:'';
-  const scoreEl=m.played
-    ?`<div class="match-score"><div class="score-main">${m.g1} – ${m.g2}</div>${m.penaltyResult?`<div class="score-sub">Pens ${m.penaltyResult.p1}–${m.penaltyResult.p2}</div>`:''}</div>`
-    :`<div class="match-score not-played"><div class="score-main">vs</div><div class="score-sub">${m.group?'Group '+m.group:m.round}</div></div>`;
-  const simBtn=(!m.played&&showBtn)?`<button class="match-sim-btn" onclick="simSpecificMatch(${m.id})"><i class="ti ti-player-play"></i> Sim</button>`:'';
-  let eventsHtml='';
-  if(m.played){
-    const s1=(m.scorers1||[]).map(s=>`<span class="scorer">⚽ ${s.player} ${s.minute}'</span>`).join('');
-    const s2=(m.scorers2||[]).map(s=>`<span class="scorer">⚽ ${s.player} ${s.minute}'</span>`).join('');
-    const b1=(m.bookings1||[]).map(b=>`<span class="booking">${b.type==='R'?'🟥':'🟨'} ${b.player} ${b.minute}'</span>`).join('');
-    const b2=(m.bookings2||[]).map(b=>`<span class="booking">${b.type==='R'?'🟥':'🟨'} ${b.player} ${b.minute}'</span>`).join('');
-    if(s1||s2||b1||b2)eventsHtml=`<div class="match-events"><div class="match-events-col">${s1}${b1}</div><div class="match-events-col right">${s2}${b2}</div></div>`;
+  const isActualMode=state.viewMode==='actual';
+  let scoreEl,w1='',w2='';
+  if(isActualMode){
+    const ar=getActualResult(m.t1,m.t2);
+    if(ar){
+      if(ar.g1>ar.g2)w1='winner';
+      else if(ar.g2>ar.g1)w2='winner';
+      scoreEl=`<div class="match-score"><div class="score-main">${ar.g1} – ${ar.g2}</div><span class="actual-badge">ACTUAL</span></div>`;
+    } else {
+      scoreEl=`<div class="match-score not-played"><div class="score-main">–</div><div class="score-sub">Not yet played</div></div>`;
+    }
+  } else {
+    if(m.winner===m.t1)w1='winner';
+    else if(m.winner===m.t2)w2='winner';
+    scoreEl=m.played
+      ?`<div class="match-score"><div class="score-main">${m.g1} – ${m.g2}</div>${m.penaltyResult?`<div class="score-sub">Pens ${m.penaltyResult.p1}–${m.penaltyResult.p2}</div>`:''}<span class="sim-badge">SIM</span></div>`
+      :`<div class="match-score not-played"><div class="score-main">vs</div><div class="score-sub">${m.group?'Group '+m.group:m.round}</div></div>`;
   }
+  const simBtn=(!m.played&&showBtn&&!isActualMode)?`<button class="match-sim-btn" onclick="simSpecificMatch(${m.id})"><i class="ti ti-player-play"></i> Sim</button>`:'';
   return `<div class="match-card ${m.played?'played':'upcoming'}">
     <div class="match-header">
       <span class="match-label">${m.group?'Group '+m.group:m.round}${m.matchday?' · MD'+m.matchday:''}</span>
       <div style="display:flex;align-items:center;gap:7px">${dateTag}${simBtn}</div>
     </div>
     <div class="match-body">
-      <div class="match-team ${m.winner===m.t1?'winner':''}">${getFlag(m.t1)} ${m.t1}</div>
+      <div class="match-team ${w1}">${getFlag(m.t1)} ${m.t1}</div>
       ${scoreEl}
-      <div class="match-team right ${m.winner===m.t2?'winner':''}">${m.t2} ${getFlag(m.t2)}</div>
-    </div>${eventsHtml}</div>`;
+      <div class="match-team right ${w2}">${m.t2} ${getFlag(m.t2)}</div>
+    </div></div>`;
 }
 
 /* ── STANDINGS PAGE ── */
@@ -1311,7 +1367,7 @@ function showPage(name){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  const idx=['dashboard','groups','standings','matches','bracket','teams'].indexOf(name);
+  const idx=['dashboard','standings','matches','bracket','teams'].indexOf(name);
   if(idx>=0)document.querySelectorAll('.nav-btn')[idx].classList.add('active');
   if(name==='groups')renderGroupsPage();
   if(name==='standings')renderStandingsPage();
