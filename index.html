@@ -279,7 +279,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <nav class="nav">
     <button class="nav-btn active" onclick="showPage('dashboard')"><i class="ti ti-layout-dashboard"></i> Dashboard</button>
     <button class="nav-btn" onclick="showPage('standings')"><i class="ti ti-table"></i> Standings</button>
-    <button class="nav-btn" onclick="showPage('matches')"><i class="ti ti-calendar-event"></i> Matches</button>
     <button class="nav-btn" onclick="showPage('bracket')"><i class="ti ti-tournament"></i> Bracket</button>
     <button class="nav-btn" onclick="showPage('teams')"><i class="ti ti-users"></i> Teams</button>
   </nav>
@@ -317,9 +316,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="date-nav-bar" id="date-nav-bar">
       <button class="date-nav-btn" id="date-prev" onclick="navDate(-1)"><i class="ti ti-chevron-left"></i></button>
       <div class="date-nav-center">
-        <button class="date-nav-all active" id="date-all-btn" onclick="clearDateFilter()">All Dates</button>
-        <span class="date-nav-label" id="date-nav-label" style="display:none"></span>
-        <span class="date-nav-sub" id="date-nav-sub" style="display:none"></span>
+        <span class="date-nav-label" id="date-nav-label"></span>
+        <span class="date-nav-sub" id="date-nav-sub"></span>
       </div>
       <button class="date-nav-btn" id="date-next" onclick="navDate(1)"><i class="ti ti-chevron-right"></i></button>
     </div>
@@ -495,11 +493,31 @@ const KNOCKOUT_DATES={
 // Key: both team names sorted alphabetically joined by '|'
 // Value: {t1, t2, g1 (score for t1), g2 (score for t2)}
 const ACTUAL_RESULTS = {
-  'Mexico|South Africa':  {t1:'Mexico',   t2:'South Africa', g1:1, g2:0},
-  'Brazil|Morocco':       {t1:'Brazil',   t2:'Morocco',      g1:1, g2:1},
-  'Haiti|Scotland':       {t1:'Scotland', t2:'Haiti',        g1:1, g2:0},
-  'Paraguay|USA':         {t1:'USA',      t2:'Paraguay',     g1:1, g2:0},
-  'Sweden|Tunisia':       {t1:'Sweden',   t2:'Tunisia',      g1:5, g2:0},
+  // Key: [t1,t2].sort().join('|') — value t1/t2 must match GROUPS_DATA names exactly
+  // Group A (Jun 11-12)
+  'Mexico|South Africa':          {t1:'Mexico',               t2:'South Africa',          g1:2, g2:0},
+  'Czechia|South Korea':          {t1:'South Korea',          t2:'Czechia',               g1:2, g2:1},
+  // Group B (Jun 12-13)
+  'Bosnia & Herzegovina|Canada':  {t1:'Canada',               t2:'Bosnia & Herzegovina',  g1:1, g2:1},
+  'Qatar|Switzerland':            {t1:'Qatar',                t2:'Switzerland',           g1:1, g2:1},
+  // Group C (Jun 13-14)
+  'Brazil|Morocco':               {t1:'Brazil',               t2:'Morocco',               g1:1, g2:1},
+  'Haiti|Scotland':               {t1:'Scotland',             t2:'Haiti',                 g1:1, g2:0},
+  // Group D (Jun 13-14)
+  'Paraguay|USA':                 {t1:'USA',                  t2:'Paraguay',              g1:4, g2:1},
+  'Australia|Türkiye':            {t1:'Australia',            t2:'Türkiye',               g1:2, g2:0},
+  // Group E (Jun 14)
+  'Curaçao|Germany':              {t1:'Germany',              t2:'Curaçao',               g1:7, g2:1},
+  'Ecuador|Ivory Coast':          {t1:'Ivory Coast',          t2:'Ecuador',               g1:1, g2:0},
+  // Group F (Jun 14-15)
+  'Japan|Netherlands':            {t1:'Netherlands',          t2:'Japan',                 g1:2, g2:2},
+  'Sweden|Tunisia':               {t1:'Sweden',               t2:'Tunisia',               g1:5, g2:1},
+  // Group G (Jun 15-16)
+  'Belgium|Egypt':                {t1:'Belgium',              t2:'Egypt',                 g1:1, g2:1},
+  'Iran|New Zealand':             {t1:'Iran',                 t2:'New Zealand',           g1:2, g2:2},
+  // Group H (Jun 15)
+  'Cape Verde|Spain':             {t1:'Spain',                t2:'Cape Verde',            g1:0, g2:0},
+  'Saudi Arabia|Uruguay':         {t1:'Saudi Arabia',         t2:'Uruguay',               g1:1, g2:1},
 };
 function getActualResult(t1,t2){
   const key=[t1,t2].sort().join('|');
@@ -767,7 +785,7 @@ let state={
   groupMatches:[],knockoutMatches:[],groupStandings:{},
   advancedTeams:[],currentRound:'group',currentKnockoutRound:0,
   champion:null,matchIdCounter:0,groupView:'teams',activeMatchRound:'Group Stage',
-  viewMode:'simulated',dashboardDate:null
+  viewMode:'simulated',dashboardDate:'2026-06-11'
 };
 
 function getFlag(t){return FLAGS[t]||'🏳️'}
@@ -1118,34 +1136,27 @@ function getGroupMatchDates(){
 }
 function navDate(dir){
   const dates=getGroupMatchDates();if(!dates.length)return;
-  const cur=state.dashboardDate;
-  let idx=cur?dates.indexOf(cur):-1;
+  const cur=state.dashboardDate||dates[0];
+  let idx=dates.indexOf(cur);
+  if(idx<0)idx=0;
   idx=Math.max(0,Math.min(dates.length-1,idx+dir));
   state.dashboardDate=dates[idx];
   renderDashboard();
 }
-function clearDateFilter(){
-  state.dashboardDate=null;
-  renderDashboard();
-}
 function updateDateNav(){
   const dates=getGroupMatchDates();
-  const cur=state.dashboardDate;
-  const idx=cur?dates.indexOf(cur):-1;
+  const cur=state.dashboardDate||dates[0];
+  const idx=dates.indexOf(cur);
   const prevBtn=document.getElementById('date-prev');
   const nextBtn=document.getElementById('date-next');
-  const allBtn=document.getElementById('date-all-btn');
   const label=document.getElementById('date-nav-label');
   const sub=document.getElementById('date-nav-sub');
-  if(prevBtn)prevBtn.disabled=!cur||(idx<=0);
+  if(prevBtn)prevBtn.disabled=idx<=0;
   if(nextBtn)nextBtn.disabled=idx>=dates.length-1;
-  if(allBtn){allBtn.classList.toggle('active',!cur);allBtn.style.display='';}
-  if(label){label.style.display=cur?'':'none';label.textContent=cur?formatDate(cur):'';}
+  if(label)label.textContent=cur?formatDate(cur):'';
   if(sub){
-    if(cur&&idx>=0){
-      const ms=state.groupMatches.filter(m=>m.date===cur);
-      sub.style.display='';sub.textContent=`${ms.length} match${ms.length!==1?'es':''}`;
-    } else sub.style.display='none';
+    const ms=state.groupMatches.filter(m=>m.date===cur);
+    sub.textContent=ms.length?`${ms.length} match${ms.length!==1?'es':''}` :'';
   }
 }
 
@@ -1213,7 +1224,7 @@ function renderStandingsPage(){
           const formPips=(s.form||[]).slice(-3).map(f=>`<span class="form-pip form-${f}">${f}</span>`).join('');
           return `<tr class="${cls}">
             <td><span class="pos-badge pos-${Math.min(i+1,4)}">${i+1}</span></td>
-            <td><span style="cursor:pointer;display:flex;align-items:center;gap:6px" onclick="openTeamRoster('${t}')">${getFlag(t)} <span style="font-weight:600">${t}</span></span></td>
+            <td><span style="display:flex;align-items:center;gap:6px">${getFlag(t)} <span style="font-weight:600">${t}</span></span></td>
             <td>${s.mp}</td><td>${s.w}</td><td>${s.d}</td><td>${s.l}</td>
             <td>${s.gf}</td><td>${s.ga}</td><td>${gdStr}</td>
             <td><strong style="font-size:14px">${s.pts}</strong></td>
@@ -1246,7 +1257,7 @@ function renderGroupsPage(){
           ${ranked.map((t,i)=>{
             const s=state.groupStandings[g]&&state.groupStandings[g][t]||{mp:0,w:0,d:0,l:0,gd:0,gf:0,pts:0};
             return `<tr class="${i<2?'qualified-auto':i===2?'qualified-maybe':''}"><td><span class="pos-badge pos-${Math.min(i+1,4)}">${i+1}</span></td>
-              <td style="cursor:pointer" onclick="openTeamRoster('${t}')">${getFlag(t)} ${t}</td>
+              <td>${getFlag(t)} ${t}</td>
               <td>${s.mp}</td><td>${s.w}</td><td>${s.d}</td><td>${s.l}</td>
               <td>${s.gd>0?'+'+s.gd:s.gd}</td><td><strong>${s.pts}</strong></td></tr>`;
           }).join('')}
@@ -1257,7 +1268,7 @@ function renderGroupsPage(){
     let html='<div class="groups-grid">';
     Object.keys(state.groups).forEach(g=>{
       html+=`<div class="group-card"><div class="group-header">Group ${g}<button class="edit-group-btn" onclick="editGroup('${g}')"><i class="ti ti-edit"></i> Edit</button></div>
-        <div>${state.groups[g].map(t=>`<div class="team-row" onclick="openTeamRoster('${t}')">
+        <div>${state.groups[g].map(t=>`<div class="team-row">
           <span class="team-flag">${getFlag(t)}</span>
           <span class="team-name">${t}</span>
           <span class="team-rank ${getRank(t)<=10?'top':''}">#${getRank(t)}</span>
@@ -1375,8 +1386,8 @@ function renderTeamsPage(){
   const q=(document.getElementById('team-search')||{}).value||'';
   document.getElementById('search-clear').style.display=q?'block':'none';
   const grouped={};Object.keys(state.groups).forEach(g=>state.groups[g].forEach(t=>{grouped[t]=g;}));
-  // Sort by FIFA points descending (highest-ranked team on top)
-  const allTeams=Object.keys(FLAGS).sort((a,b)=>(FIFA_POINTS[b]||1200)-(FIFA_POINTS[a]||1200));
+  // Sort by FIFA rank ascending (rank 1 on top)
+  const allTeams=Object.keys(FLAGS).sort((a,b)=>getRank(a)-getRank(b));
   const teams=q?allTeams.filter(t=>{
     const tl=t.toLowerCase(),ql=q.toLowerCase();
     if(tl.includes(ql))return true;
@@ -1391,7 +1402,7 @@ function renderTeamsPage(){
     const formColor=parseFloat(avgForm)>=8?'var(--green)':parseFloat(avgForm)>=7?'var(--gold-dark)':'#c00';
     const pts=FIFA_POINTS[t]||1200;
     const rank=getRank(t);
-    return `<div class="team-list-row" onclick="openTeamRoster('${t}')">
+    return `<div class="team-list-row">
       <span class="team-list-pos">${i+1}</span>
       <span class="team-list-flag">${getFlag(t)}</span>
       <span class="team-list-name">${t}</span>
@@ -1435,7 +1446,7 @@ function showPage(name){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  const idx=['dashboard','standings','matches','bracket','teams'].indexOf(name);
+  const idx=['dashboard','standings','bracket','teams'].indexOf(name);
   if(idx>=0)document.querySelectorAll('.nav-btn')[idx].classList.add('active');
   if(name==='groups')renderGroupsPage();
   if(name==='standings')renderStandingsPage();
